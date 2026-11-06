@@ -1,0 +1,40 @@
+# Off Campus Compass — Render Blueprint
+#
+# Two services, both free tier:
+#   off-campus-compass-backend  — Node 24 + Express API (SQLite by default)
+#   off-campus-compass-frontend — static React site (Vite build output)
+#
+# IMPORTANT deploy order (the frontend bakes its API URL in at build time):
+#   1. Sync this Blueprint. The backend will deploy first.
+#   2. Copy the backend's real onrender.com URL (it may get a suffix, e.g.
+#      off-campus-compass-backend-xxxx.onrender.com).
+#   3. In the frontend service's Environment settings, set
+#      VITE_API_URL to https://<backend-url>/api and redeploy the frontend.
+#   4. DATABASE_URL is intentionally sync:false. Leave it unset for the
+#      built-in SQLite database (data resets on redeploy — fine for the demo),
+#      or set it to a Postgres URL (e.g. Neon) for persistent data.
+services:
+  - type: web
+    name: off-campus-compass-backend
+    env: node
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: off-campus-compass-frontend
+    env: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: VITE_API_URL
+        value: https://off-campus-compass-backend.onrender.com/api
