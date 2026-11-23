@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, clearAuth, getStoredUser, type User } from './lib/api';
+import { CompassLogo } from './components';
 import Home from './pages/Home';
 import Browse from './pages/Browse';
 import ListingDetail from './pages/ListingDetail';
@@ -46,9 +47,13 @@ export function go(path: string) {
 export default function App() {
   const [route, setRoute] = useState<Route>(parseHash);
   const [user, setUser] = useState<User | null>(() => getStoredUser());
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    const onHash = () => setRoute(parseHash());
+    const onHash = () => {
+      setRoute(parseHash());
+      setMenuOpen(false);
+    };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -70,81 +75,106 @@ export default function App() {
   }, []);
 
   const authed = !!user;
-  const needsAuth = ['matching', 'requests', 'saved', 'post', 'profile'].includes(route.name);
+  const navTo = (path: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    go(path);
+  };
+  const housingActive = route.name === 'browse' || route.name === 'listing';
 
   return (
     <div>
-      <header className="topbar">
-        <div className="topbar-inner">
-          <a className="brand" href="#/" onClick={(e) => { e.preventDefault(); go(''); }}>
-            <svg width="34" height="34" viewBox="0 0 100 100" aria-hidden="true">
-              <circle cx="50" cy="50" r="46" fill="none" stroke="#b31b1b" strokeWidth="5" />
-              <polygon points="50,10 58,50 50,90 42,50" fill="#b31b1b" />
-              <polygon points="10,50 50,42 90,50 50,58" fill="#b31b1b" opacity="0.55" />
-              <circle cx="50" cy="50" r="7" fill="#faf6f0" stroke="#b31b1b" strokeWidth="4" />
-            </svg>
-            <span>
-              <span className="brand-name">
-                Off Campus <em>Compass</em>
-              </span>
-              <br />
-              <span className="brand-sub">Cornell · Collegetown · Ithaca</span>
-            </span>
+      <div className="top-strip" />
+      <header className="site-header">
+        <div className="site-header-inner">
+          <a className="brand" href="#/" onClick={navTo('')}>
+            <CompassLogo />
+            Off Campus Compass
           </a>
-          <nav className="nav">
-            <button className={route.name === 'home' ? 'active' : ''} onClick={() => go('')}>Home</button>
-            <button className={route.name === 'browse' ? 'active' : ''} onClick={() => go('browse')}>Find housing</button>
-            <button className={route.name === 'matching' ? 'active' : ''} onClick={() => go('matching')}>Find roommates</button>
+          <button
+            type="button"
+            className="menu-btn"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            Menu
+          </button>
+          <nav className={`site-nav${menuOpen ? ' open' : ''}`} aria-label="Main">
+            <a href="#/browse" className={housingActive ? 'active' : ''} aria-current={housingActive ? 'page' : undefined} onClick={navTo('browse')}>
+              Housing
+            </a>
+            <a href="#/matching" className={route.name === 'matching' ? 'active' : ''} aria-current={route.name === 'matching' ? 'page' : undefined} onClick={navTo('matching')}>
+              Roommates
+            </a>
+            <a href="#/saved" className={route.name === 'saved' ? 'active' : ''} aria-current={route.name === 'saved' ? 'page' : undefined} onClick={navTo('saved')}>
+              Saved
+            </a>
             {authed && (
               <>
-                <button className={route.name === 'saved' ? 'active' : ''} onClick={() => go('saved')}>Saved</button>
-                <button className={route.name === 'requests' ? 'active' : ''} onClick={() => go('requests')}>Requests</button>
-                <button className={route.name === 'post' ? 'active' : ''} onClick={() => go('post')}>Post a place</button>
+                <a href="#/requests" className={route.name === 'requests' ? 'active' : ''} onClick={navTo('requests')}>
+                  Requests
+                </a>
+                <a href="#/post" className={route.name === 'post' ? 'active' : ''} onClick={navTo('post')}>
+                  Post a place
+                </a>
               </>
             )}
             {authed ? (
               <>
-                <span className="user-chip">{user.name}</span>
-                <button onClick={() => go('profile')}>Profile</button>
-                <button onClick={handleLogout}>Log out</button>
+                <span className="user-name">{user.name}</span>
+                <a href="#/profile" className={route.name === 'profile' ? 'active' : ''} onClick={navTo('profile')}>
+                  Profile
+                </a>
+                <button type="button" className="linklike" onClick={handleLogout}>
+                  Log out
+                </button>
               </>
             ) : (
-              <button className={route.name === 'login' ? 'active' : ''} onClick={() => go('login')}>Log in</button>
+              <a href="#/login" className="btn" style={{ minHeight: 44, padding: '0 18px' }} onClick={navTo('login')}>
+                Log in
+              </a>
             )}
           </nav>
         </div>
       </header>
 
-      <main className="container">
+      <main>
         {route.name === 'home' && <Home user={user} />}
         {route.name === 'browse' && <Browse />}
         {route.name === 'listing' && <ListingDetail id={route.id} user={user} />}
         {route.name === 'matching' && (authed ? <Matching user={user!} /> : <Auth mode="login" onAuth={handleAuth} notice="Log in to find roommates." />)}
-        {route.name === 'requests' && (authed ? <Requests /> : <Auth mode="login" onAuth={handleAuth} notice="Log in to see your roommate requests." />)}
-        {route.name === 'saved' && (authed ? <Saved /> : <Auth mode="login" onAuth={handleAuth} notice="Log in to see your saved places." />)}
-        {route.name === 'post' && (authed ? <PostListing /> : <Auth mode="login" onAuth={handleAuth} notice="Log in to post a place." />)}
         {route.name === 'login' && <Auth mode="login" onAuth={handleAuth} />}
         {route.name === 'register' && <Auth mode="register" onAuth={handleAuth} />}
-        {route.name === 'profile' && (authed ? <Profile user={user!} onUserChange={handleAuth} /> : <Auth mode="login" onAuth={handleAuth} notice="Log in to see your profile." />)}
-        {needsAuth && !authed && null}
+        {(route.name === 'requests' || route.name === 'saved' || route.name === 'post' || route.name === 'profile') && (
+          <div className="container">
+            {route.name === 'requests' && (authed ? <Requests /> : <Auth mode="login" onAuth={handleAuth} notice="Log in to see your roommate requests." next="requests" />)}
+            {route.name === 'saved' && (authed ? <Saved /> : <Auth mode="login" onAuth={handleAuth} notice="Log in to see your saved places." next="saved" />)}
+            {route.name === 'post' && (authed ? <PostListing /> : <Auth mode="login" onAuth={handleAuth} notice="Log in to post a place." next="post" />)}
+            {route.name === 'profile' && (authed ? <Profile user={user!} onUserChange={handleAuth} /> : <Auth mode="login" onAuth={handleAuth} notice="Log in to see your profile." next="profile" />)}
+          </div>
+        )}
       </main>
 
-      <footer className="footer">
-        <div className="footer-inner">
-          <strong>Off Campus Compass</strong> — built by Cornell students, for Cornell students.
-          Find a place off campus and roommates who actually fit, without having to network
-          with upperclassmen for basic details.
-          <div className="pill-row">
-            <span className="tag">Housing search</span>
-            <span className="tag">Roommate matching</span>
-            <span className="tag">Landlord reviews</span>
+      <footer className="site-footer">
+        <div className="site-footer-inner">
+          <div className="foot-main">
+            Built by Cornell students, for Cornell students. Find a place off campus and
+            roommates who fit, without networking with upperclassmen for basic details.
           </div>
-          <p style={{ marginTop: 12 }}>
-            Demo listings are fictional and marked as demos. Always verify a real listing,
-            meet roommates in person, and read a lease before signing anything.
-          </p>
+          <div>Trying it out? Log in with demo@offcampuscompass.demo and the password demo123.</div>
         </div>
       </footer>
+
+      <nav className="mobile-nav" aria-label="Main">
+        <a href="#/browse" className={housingActive ? 'active' : ''} aria-current={housingActive ? 'page' : undefined} onClick={navTo('browse')}>
+          Housing
+        </a>
+        <a href="#/matching" className={route.name === 'matching' ? 'active' : ''} aria-current={route.name === 'matching' ? 'page' : undefined} onClick={navTo('matching')}>
+          Roommates
+        </a>
+        <a href="#/saved" className={route.name === 'saved' ? 'active' : ''} aria-current={route.name === 'saved' ? 'page' : undefined} onClick={navTo('saved')}>
+          Saved
+        </a>
+      </nav>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, type Listing, type Review, type User } from '../lib/api';
-import { artClass, HouseGlyph, Stars } from '../components';
+import { BookmarkIcon, SchematicMap, formatDate, money } from '../components';
 import { go } from '../App';
+
+const BED_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five'];
 
 export default function ListingDetail({ id, user }: { id: number; user: User | null }) {
   const [listing, setListing] = useState<Listing | null>(null);
@@ -10,9 +12,10 @@ export default function ListingDetail({ id, user }: { id: number; user: User | n
   const [bookmarked, setBookmarked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
-  const [reviewMsg, setReviewMsg] = useState('');
+  const [reviewError, setReviewError] = useState('');
+  const [reviewNotice, setReviewNotice] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -33,7 +36,7 @@ export default function ListingDetail({ id, user }: { id: number; user: User | n
 
   useEffect(load, [id]);
 
-  const toggleBookmark = async () => {
+  const toggleSave = async () => {
     if (!user) {
       go('login');
       return;
@@ -47,128 +50,240 @@ export default function ListingDetail({ id, user }: { id: number; user: User | n
         setBookmarked(true);
       }
     } catch (e: any) {
-      setError(e.message || 'Could not save bookmark.');
+      setError(e.message || 'Could not save this place.');
     }
   };
 
-  const submitReview = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setReviewMsg('');
+  const postReview = async () => {
+    setReviewError('');
+    setReviewNotice('');
+    if (!rating) {
+      setReviewError('Pick a rating from 1 to 5.');
+      return;
+    }
+    if (comment.trim().length < 10) {
+      setReviewError('Add a sentence or two so the next renter knows what to expect.');
+      return;
+    }
     try {
-      await api.postReview(id, { rating, comment });
+      await api.postReview(id, { rating, comment: comment.trim() });
+      setRating(0);
       setComment('');
-      setReviewMsg('Thanks — your review is posted.');
+      setReviewNotice('Review posted.');
       load();
     } catch (err: any) {
-      setReviewMsg(err.message || 'Could not post review.');
+      setReviewError(err.message || 'Could not post review.');
     }
   };
 
-  if (loading) return <div className="empty">Loading…</div>;
-  if (error || !listing) return <div className="error">{error || 'Listing not found.'}</div>;
+  if (loading) return <div className="container"><div className="empty">Loading…</div></div>;
+  if (error || !listing)
+    return (
+      <div className="container">
+        <div className="error">{error || 'Listing not found.'}</div>
+      </div>
+    );
+
+  const dist = [5, 4, 3, 2, 1]
+    .map((star) => ({ star, count: reviews.filter((r) => r.rating === star).length }))
+    .filter((d) => d.star >= 3 || d.count > 0);
+  const roommatesNeeded = Math.max(0, listing.bedrooms - 1);
 
   return (
-    <div>
-      <div className={`detail-art ${artClass(listing.neighborhood)}`}>
-        <span style={{ position: 'absolute', right: 18, top: 16 }}>
-          <HouseGlyph />
-        </span>
-        <h1>{listing.title}</h1>
-      </div>
+    <div className="container">
+      <nav className="crumb" aria-label="Breadcrumb">
+        <a
+          href="#/browse"
+          onClick={(e) => {
+            e.preventDefault();
+            go('browse');
+          }}
+        >
+          Housing
+        </a>{' '}
+        / {listing.neighborhood} / {listing.title}
+      </nav>
 
-      <div className="two-col" style={{ marginTop: 20 }}>
-        <div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
-            <span className="price" style={{ fontSize: 28 }}>${listing.price_per_bedroom}<span> / bedroom / month</span></span>
-            {avgRating !== null && (
-              <span><Stars rating={avgRating} /> {avgRating.toFixed(1)} from {reviews.length} review{reviews.length === 1 ? '' : 's'}</span>
-            )}
+      <div className="detail-cols">
+        <div className="detail-main">
+          <h1>{listing.title}</h1>
+          <p className="detail-sub">
+            {listing.address_label}, {listing.neighborhood}. Available {formatDate(listing.available_from)}.
+            {listing.is_demo ? ' Demo listing, fictional.' : ''}
+          </p>
+
+          <div className="price-line">
+            <div>
+              <span className="big num">{money(listing.price_per_bedroom)}</span>{' '}
+              <span className="per">a bedroom each month</span>
+            </div>
+            <div className="num" style={{ color: 'var(--muted)' }}>
+              {money(listing.price_per_bedroom * listing.bedrooms)} for the whole unit
+            </div>
           </div>
-          <p style={{ fontSize: 17 }}>{listing.description}</p>
 
-          <div className="tags" style={{ margin: '10px 0' }}>
-            {listing.furnished && <span className="tag">Furnished</span>}
-            {listing.utilities_included && <span className="tag">Utilities included</span>}
-            {listing.is_demo && <span className="tag demo">Demo listing — fictional, for trying the site</span>}
-          </div>
+          <dl className="facts">
+            <div>
+              <dt>Bedrooms</dt>
+              <dd className="num">{listing.bedrooms}</dd>
+            </div>
+            <div>
+              <dt>Bathrooms</dt>
+              <dd className="num">{listing.bathrooms}</dd>
+            </div>
+            <div>
+              <dt>Walk to the Arts Quad</dt>
+              <dd className="num">{listing.distance_min} min</dd>
+            </div>
+            <div>
+              <dt>Furnished</dt>
+              <dd>{listing.furnished ? 'Yes' : 'No'}</dd>
+            </div>
+            <div>
+              <dt>Utilities</dt>
+              <dd>{listing.utilities_included ? 'Included' : 'Not included'}</dd>
+            </div>
+            <div>
+              <dt>Landlord</dt>
+              <dd style={{ fontSize: 17 }}>{listing.landlord_label}</dd>
+            </div>
+          </dl>
 
-          <h2 className="serif">Amenities</h2>
+          <h2>About this place</h2>
+          <p className="about">{listing.description}</p>
+
+          <h2>What comes with it</h2>
           {listing.amenities.length === 0 ? (
-            <p style={{ color: 'var(--muted)' }}>No amenities listed.</p>
+            <p style={{ color: 'var(--muted)', fontSize: 18 }}>No amenities listed.</p>
           ) : (
-            <ul>
+            <ul className="amen">
               {listing.amenities.map((a) => (
                 <li key={a}>{a}</li>
               ))}
             </ul>
           )}
 
-          <h2 className="serif" style={{ marginTop: 28 }}>Landlord reviews</h2>
+          <h2 style={{ marginTop: 44 }}>What past tenants say about the landlord</h2>
           {reviews.length === 0 ? (
-            <p style={{ color: 'var(--muted)' }}>No reviews yet — be the first to share what it is like renting here.</p>
+            <p style={{ color: 'var(--muted)', fontSize: 18 }}>
+              No reviews yet — be the first to share what it is like renting here.
+            </p>
           ) : (
-            reviews.map((r) => (
-              <div className="review" key={r.id}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <Stars rating={r.rating} />
-                  <strong>{r.reviewer_name}</strong>
+            <>
+              <div className="rating-head">
+                <div>
+                  <span className="big num">{avgRating !== null ? avgRating.toFixed(1) : '—'}</span>{' '}
+                  <span className="of">
+                    out of 5, from {reviews.length} review{reviews.length === 1 ? '' : 's'}
+                  </span>
                 </div>
-                <p style={{ margin: '6px 0 0' }}>{r.comment}</p>
+                <div className="dist">
+                  {dist.map((d) => (
+                    <div className="dist-row" key={d.star}>
+                      <span className="num">{d.star} stars</span>
+                      <span className="factor-bar">
+                        <i style={{ width: `${reviews.length ? (d.count / reviews.length) * 100 : 0}%` }} />
+                      </span>
+                      <span className="num">{d.count}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))
+              {reviews.map((r) => (
+                <div className="review" key={r.id}>
+                  <div className="who">
+                    {r.reviewer_name}{' '}
+                    <span className="r num">{r.rating} out of 5</span>
+                  </div>
+                  <p>{r.comment}</p>
+                </div>
+              ))}
+            </>
           )}
 
-          {user ? (
-            <form onSubmit={submitReview} className="form-card" style={{ marginTop: 18 }}>
-              <h3 style={{ marginTop: 0 }}>Review this landlord</h3>
-              <div className="form-grid">
-                <div className="field">
-                  <label htmlFor="rev-rating">Rating</label>
-                  <select id="rev-rating" value={rating} onChange={(e) => setRating(Number(e.target.value))}>
-                    {[5, 4, 3, 2, 1].map((n) => (
-                      <option key={n} value={n}>{n} star{n === 1 ? '' : 's'}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field full">
-                  <label htmlFor="rev-comment">What should other students know?</label>
-                  <textarea id="rev-comment" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Deposit returned? Repairs fast? Noisy at night?" />
-                </div>
+          <form
+            className="review-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (user) postReview();
+              else go('login');
+            }}
+          >
+            <div className="t">Rented here? Rate the landlord.</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginTop: 12 }} id="rl">
+              Your rating
+            </div>
+            <div role="group" aria-labelledby="rl" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={rating === n ? 'chip selected' : 'chip'}
+                  style={{ minWidth: 44 }}
+                  aria-pressed={rating === n}
+                  onClick={() => {
+                    setRating(n);
+                    setReviewError('');
+                  }}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <label htmlFor="cm">What was it like?</label>
+            <textarea
+              id="cm"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Repairs, deposit, how quickly they replied"
+            />
+            {reviewError && (
+              <div role="alert" className="error">
+                {reviewError}
               </div>
-              <div className="form-actions">
-                <button className="btn" type="submit">Post review</button>
-                {reviewMsg && <span style={{ fontSize: 14 }}>{reviewMsg}</span>}
+            )}
+            {reviewNotice && (
+              <div role="status" className="notice">
+                {reviewNotice}
               </div>
-            </form>
-          ) : (
-            <p style={{ marginTop: 18 }}>
-              <a href="#/login" onClick={(e) => { e.preventDefault(); go('login'); }}>Log in</a> to review this landlord.
-            </p>
-          )}
+            )}
+            <button type="submit" className="btn" style={{ marginTop: 14, padding: '0 24px' }}>
+              Post review
+            </button>
+            {!user && (
+              <p style={{ margin: '12px 0 0', fontSize: 15, color: 'var(--muted)' }}>
+                You will be asked to log in first — reviews are posted under your name.
+              </p>
+            )}
+          </form>
         </div>
 
-        <aside className="panel">
-          <h3>The details</h3>
-          <dl className="kv">
-            <dt>Neighborhood</dt><dd>{listing.neighborhood}</dd>
-            <dt>Area</dt><dd>{listing.address_label}</dd>
-            <dt>Bed / Bath</dt><dd>{listing.bedrooms} bed · {listing.bathrooms} bath</dd>
-            <dt>Walk to campus</dt><dd>{listing.distance_min} minutes</dd>
-            <dt>Available</dt><dd>{listing.available_from}</dd>
-            <dt>Landlord</dt><dd>{listing.landlord_label}</dd>
-          </dl>
-          <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
-            <button className="btn" onClick={toggleBookmark}>
-              {bookmarked ? '★ Saved' : '☆ Save this place'}
-            </button>
-            <button className="btn ghost" onClick={() => go('matching')}>Find roommates for it</button>
+        <aside className="detail-aside">
+          <div className="aside-card">
+            <SchematicMap listings={[listing]} selectedId={listing.id} crop />
+            <div className="cap">
+              {listing.distance_min} min walk to the Arts Quad. Schematic map, not to scale.
+            </div>
           </div>
-          {listing.is_demo && (
-            <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 14 }}>
-              Demo listing: the place, landlord and address are fictional. Real listings
-              posted by students appear here the same way.
+          <div className="save-card">
+            <button
+              type="button"
+              className={`save-btn${bookmarked ? ' saved' : ''}`}
+              aria-pressed={bookmarked}
+              onClick={toggleSave}
+            >
+              <BookmarkIcon filled={bookmarked} />
+              {bookmarked ? 'Saved' : 'Save this place'}
+            </button>
+            <button type="button" className="btn block" style={{ minHeight: 52, fontSize: 17 }} onClick={() => go('matching')}>
+              Find roommates for this place
+            </button>
+            <p>
+              {roommatesNeeded > 0
+                ? `${BED_WORDS[listing.bedrooms] ?? listing.bedrooms} bedrooms means ${BED_WORDS[roommatesNeeded] ?? roommatesNeeded} roommate${roommatesNeeded === 1 ? '' : 's'}. Matches are scored out of 100 on how you actually live.`
+                : 'One bedroom means no roommate needed for this place. Matches are scored out of 100 on how you actually live.'}
             </p>
-          )}
+          </div>
         </aside>
       </div>
     </div>
